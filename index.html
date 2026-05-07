@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>교사 호출 시스템 (Standalone)</title>
+    <!-- Tailwind CSS Play CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & Babel -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        .bg-primary { background-color: #1e40af; }
+        .text-primary { color: #1e40af; }
+        .border-primary { border-color: #1e40af; }
+        .bg-accent { background-color: #fbd38d; }
+        .text-accent { color: #fbd38d; }
+        
+        /* Toast Notification CSS */
+        #toast-container {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .toast {
+            background: white;
+            padding: 12px 24px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+            border: 2px solid #e2e8f0;
+            font-weight: 700;
+            font-size: 14px;
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from { transform: translateY(-100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <div id="toast-container"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- CONFIG ---
+        const firebaseConfig = {
+            projectId: "gen-lang-client-0399578678",
+            appId: "1:1054410877578:web:680f9982fbd76db2b2db73",
+            apiKey: "AIzaSyCsnVw9hyZZJk0wkrtctrQRoDDKnkK-OdU",
+            authDomain: "gen-lang-client-0399578678.firebaseapp.com",
+            storageBucket: "gen-lang-client-0399578678.firebasestorage.app",
+            messagingSenderId: "1054410877578",
+            measurementId: ""
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        // Toast Helper
+        const showToast = (message) => {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.textContent = message;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        };
+
+        const INITIAL_TEACHERS = [
+            { name: '김철수', department: '국어' },
+            { name: '이영희', department: '수학' },
+            { name: '박지민', department: '영어' },
+            { name: '최동욱', department: '과학' },
+            { name: '정지우', department: '사회' }
+        ];
+
+        // --- COMPONENTS ---
+
+        function IconButton({ icon, label, onClick, className = "" }) {
+            useEffect(() => { lucide.createIcons(); }, []);
+            return (
+                <button onClick={onClick} className={`flex items-center gap-2 ${className}`}>
+                    <i data-lucide={icon} className="w-4 h-4"></i>
+                    {label}
+                </button>
+            );
+        }
+
+        function StudentPage() {
+            const [teachers, setTeachers] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [searchTerm, setSearchTerm] = useState('');
+
+            useEffect(() => {
+                const unsubscribe = db.collection('teachers').orderBy('name', 'asc').onSnapshot(snapshot => {
+                    setTeachers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                    setLoading(false);
+                    lucide.createIcons();
+                });
+                return () => unsubscribe();
+            }, []);
+
+            const handleCall = async (teacher) => {
+                try {
+                    await db.collection('calls').add({
+                        teacherId: teacher.id,
+                        teacherName: teacher.name,
+                        status: 'pending',
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                    showToast(`${teacher.name} 선생님을 호출했습니다.`);
+                } catch (e) {
+                    showToast('호출에 실패했습니다.');
+                }
+            };
+
+            const filtered = teachers.filter(t => t.name.includes(searchTerm) || t.department?.includes(searchTerm));
+
+            return (
+                <div className="space-y-8 animate-in fade-in transition-all">
+                    <div className="text-center md:text-left space-y-2">
+                        <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tighter">교사 호출 시스템</h1>
+                        <p className="text-slate-500 font-medium">선생님 성함을 클릭하여 호출해 주세요.</p>
+                    </div>
+
+                    <div className="relative max-w-sm mx-auto md:mx-0">
+                        <i data-lucide="search" className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+                        <input 
+                            type="text" 
+                            placeholder="검색..." 
+                            className="w-full pl-10 pr-4 py-3 rounded-xl border-2 border-slate-200 outline-none focus:border-primary"
+                            value={searchTerm}
+                            onChange={e => { setSearchTerm(e.target.value); setTimeout(() => lucide.createIcons(), 0); }}
+                        />
+                    </div>
+
+                    {loading ? (
+                        <div className="py-20 text-center font-bold text-slate-400 italic">데이터를 불러오는 중...</div>
+                    ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                            {filtered.map(t => (
+                                <button key={t.id} onClick={() => handleCall(t)} className="flex flex-col items-center justify-center p-6 bg-white rounded-xl border-2 border-slate-200 hover:border-primary transition-all aspect-square gap-1 group">
+                                    <h3 className="font-black text-xl text-slate-800">{t.name}</h3>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t.department}</p>
+                                    <div className="mt-4 opacity-0 group-hover:opacity-100 transition-opacity text-[10px] font-black text-primary border border-primary px-2 py-0.5 rounded">호출</div>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        function DashboardPage() {
+            const [activeCalls, setActiveCalls] = useState([]);
+            const [completed, setCompleted] = useState([]);
+
+            useEffect(() => {
+                const unsubActive = db.collection('calls').where('status', '==', 'pending').orderBy('timestamp', 'desc').onSnapshot(snap => {
+                    setActiveCalls(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                    lucide.createIcons();
+                });
+                const unsubComp = db.collection('calls').where('status', '==', 'completed').orderBy('timestamp', 'desc').limit(10).onSnapshot(snap => {
+                    setCompleted(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                });
+                return () => { unsubActive(); unsubComp(); };
+            }, []);
+
+            const handleFinish = async (id) => {
+                await db.collection('calls').doc(id).update({ status: 'completed' });
+                showToast('완료 처리되었습니다.');
+            };
+
+            const formatTime = (ts) => {
+                if (!ts) return '';
+                const date = ts.toDate ? ts.toDate() : new Date(ts);
+                return date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+            };
+
+            return (
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+                    <div className="lg:col-span-3 space-y-8">
+                        <div className="flex flex-col md:flex-row md:items-center gap-4">
+                            <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tighter">실시간 호출 현황</h1>
+                            <div className="bg-primary text-white px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest w-fit">{activeCalls.length} Pending</div>
+                        </div>
+
+                        <div className="space-y-3">
+                            {activeCalls.length > 0 ? activeCalls.map(call => (
+                                <div key={call.id} className="flex flex-col md:flex-row items-center justify-between p-6 bg-white rounded-2xl border-2 border-primary/10 shadow-sm gap-6">
+                                    <div className="flex flex-col md:flex-row items-center gap-6 text-center md:text-left">
+                                        <div className="w-16 h-16 rounded-xl bg-primary flex items-center justify-center text-white text-2xl font-black">{call.teacherName.charAt(0)}</div>
+                                        <div>
+                                            <h3 className="text-2xl font-black text-slate-900">{call.teacherName} 선생님</h3>
+                                            <p className="text-[10px] font-black text-primary uppercase tracking-widest flex items-center justify-center md:justify-start gap-1">
+                                                <i data-lucide="clock" className="w-3 h-3"></i> {formatTime(call.timestamp)} REQUESTED
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button onClick={() => handleFinish(call.id)} className="w-full md:w-auto px-6 py-4 bg-primary text-white rounded-xl font-black uppercase tracking-widest text-xs">확인 완료</button>
+                                </div>
+                            )) : <div className="p-20 text-center border-2 border-dashed border-slate-200 rounded-2xl text-slate-300 font-black italic text-xl">NO PENDING CALLS</div>}
+                        </div>
+                    </div>
+
+                    <div className="bg-primary rounded-3xl p-6 text-white h-fit shadow-xl">
+                        <h2 className="flex items-center gap-2 font-black uppercase tracking-tighter text-lg mb-6">
+                            <i data-lucide="history" className="w-5 h-5 text-accent"></i> RECENT
+                        </h2>
+                        <div className="space-y-3 overflow-y-auto max-h-[50vh]">
+                            {completed.map(c => (
+                                <div key={c.id} className="flex items-center justify-between p-3 bg-white/10 rounded-xl border border-white/5">
+                                    <div>
+                                        <p className="font-bold text-sm tracking-tight">{c.teacherName}</p>
+                                        <p className="text-[9px] text-white/50 font-bold italic">{formatTime(c.timestamp)}</p>
+                                    </div>
+                                    <i data-lucide="check-circle-2" className="w-3 h-3 text-accent"></i>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function AdminPage({ setIsAuthorized }) {
+            const [password, setPassword] = useState('');
+            const [teachers, setTeachers] = useState([]);
+            const [isAdding, setIsAdding] = useState(false);
+            const [newTeacher, setNewTeacher] = useState({ name: '', department: '' });
+
+            useEffect(() => {
+                const unsubscribe = db.collection('teachers').orderBy('name', 'asc').onSnapshot(snap => {
+                    setTeachers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                    lucide.createIcons();
+                });
+                return () => unsubscribe();
+            }, []);
+
+            const login = (e) => {
+                e.preventDefault();
+                if (password === '1234') {
+                    setIsAuthorized(true);
+                    showToast('관리자 모드 활성화');
+                    setTimeout(() => lucide.createIcons(), 0);
+                } else {
+                    showToast('비밀번호가 틀렸습니다.');
+                }
+            };
+
+            const addTeacher = async () => {
+                if (!newTeacher.name) return;
+                await db.collection('teachers').add({ ...newTeacher, createdAt: Date.now() });
+                setNewTeacher({ name: '', department: '' });
+                setIsAdding(false);
+                showToast('추가되었습니다.');
+            };
+
+            const deleteTeacher = async (id) => {
+                if (confirm('삭제하시겠습니까?')) {
+                    await db.collection('teachers').doc(id).delete();
+                    showToast('삭제되었습니다.');
+                }
+            };
+
+            const clearAll = async () => {
+                if (confirm('모든 데이터를 삭제하시겠습니까?')) {
+                    const snap = await db.collection('teachers').get();
+                    const batch = db.batch();
+                    snap.docs.forEach(doc => batch.delete(doc.ref));
+                    await batch.commit();
+                    showToast('전체 삭제되었습니다.');
+                }
+            };
+
+            const seed = async () => {
+                const batch = db.batch();
+                INITIAL_TEACHERS.forEach(t => {
+                    const ref = db.collection('teachers').doc();
+                    batch.set(ref, { ...t, createdAt: Date.now() });
+                });
+                await batch.commit();
+                showToast('초기 데이터가 생성되었습니다.');
+            };
+
+            // Login UI
+            if (!document.getElementById('is-auth')) {
+                return (
+                    <div className="max-w-md mx-auto mt-20 p-10 bg-white rounded-3xl border-2 border-slate-200 shadow-xl space-y-8">
+                        <i data-lucide="shield-check" className="w-20 h-20 text-primary mx-auto opacity-20"></i>
+                        <h2 className="text-2xl font-black text-center tracking-tight uppercase">Admin Access</h2>
+                        <form onSubmit={login} className="space-y-4">
+                            <input type="password" autoFocus className="w-full px-6 py-4 rounded-xl border-2 text-center text-2xl font-black tracking-[1em]" placeholder="····" value={password} onChange={e => setPassword(e.target.value)} />
+                            <button className="w-full py-4 bg-primary text-white rounded-xl font-black uppercase tracking-widest shadow-lg shadow-primary/20">Unlock</button>
+                        </form>
+                        <div id="is-auth" className="hidden"></div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="max-w-5xl mx-auto space-y-12">
+                    <div className="flex flex-col md:flex-row md:items-end justify-between border-b-4 border-primary pb-6 gap-6">
+                        <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tighter uppercase text-center md:text-left">Admin Console</h1>
+                        <div className="flex flex-wrap justify-center gap-3">
+                            <button onClick={clearAll} className="flex items-center gap-2 px-4 py-2.5 border-2 border-red-100 text-red-600 bg-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm"><i data-lucide="trash-2" className="w-3 h-3"></i> Clear</button>
+                            <button onClick={seed} className="flex items-center gap-2 px-4 py-2.5 border-2 border-slate-200 bg-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm"><i data-lucide="database" className="w-3 h-3"></i> Seed</button>
+                            <button onClick={() => setIsAdding(true)} className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-primary/20"><i data-lucide="plus" className="w-3 h-3"></i> Add</button>
+                        </div>
+                    </div>
+
+                    <div className="bg-white rounded-2xl border-2 border-slate-200 overflow-hidden overflow-x-auto shadow-sm">
+                        <table className="w-full min-w-[600px] text-left">
+                            <thead className="bg-slate-50 border-b-2 border-slate-100 text-slate-700 text-[10px] font-black uppercase tracking-[0.2em]"><th className="px-8 py-5">Name</th><th className="px-8 py-5">Department</th><th className="px-8 py-5 text-right">Actions</th></thead>
+                            <tbody className="divide-y-2 divide-slate-50">
+                                {isAdding && (
+                                    <tr className="bg-primary/5 animate-pulse">
+                                        <td className="px-8 py-6"><input className="w-full px-4 py-2 border rounded-lg font-bold" value={newTeacher.name} onChange={e => setNewTeacher(p=>({...p, name: e.target.value}))} placeholder="이름" /></td>
+                                        <td className="px-8 py-6"><input className="w-full px-4 py-2 border rounded-lg font-bold" value={newTeacher.department} onChange={e => setNewTeacher(p=>({...p, department: e.target.value}))} placeholder="과목" /></td>
+                                        <td className="px-8 py-6 text-right"><button onClick={addTeacher} className="px-4 py-2 bg-primary text-white rounded-lg font-bold">Save</button></td>
+                                    </tr>
+                                )}
+                                {teachers.map(t => (
+                                    <tr key={t.id} className="group hover:bg-slate-50">
+                                        <td className="px-8 py-6 font-black text-lg">{t.name}</td>
+                                        <td className="px-8 py-6 font-bold text-slate-400 text-xs">{t.department}</td>
+                                        <td className="px-8 py-6 text-right">
+                                            <button onClick={() => deleteTeacher(t.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><i data-lucide="trash-2" className="w-4 h-4"></i></button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        }
+
+        function App() {
+            const [page, setPage] = useState('student');
+            const [isAuthorized, setIsAuthorized] = useState(false);
+            const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+            useEffect(() => { lucide.createIcons(); }, [page, isMenuOpen]);
+
+            const navigate = (p) => {
+                if (p === 'admin' && page !== 'admin') {
+                    // Logic to show login handled in AdminPage
+                } else if (page === 'admin' && p !== 'admin') {
+                    setIsAuthorized(false);
+                }
+                setPage(p);
+                setIsMenuOpen(false);
+            };
+
+            return (
+                <div className="min-h-screen pt-16 md:pt-20 pb-20">
+                    <nav className="fixed top-0 left-0 right-0 bg-white border-b border-slate-200 h-16 md:h-20 flex items-center px-4 md:px-10 justify-between z-50">
+                        <button onClick={() => navigate('student')} className="font-black text-xl md:text-2xl text-primary tracking-tighter uppercase whitespace-nowrap">Call-Teacher</button>
+                        
+                        <button className="md:hidden p-2" onClick={() => setIsMenuOpen(!isMenuOpen)}>
+                            <i data-lucide={isMenuOpen ? "x" : "menu"} className="w-6 h-6 text-slate-500"></i>
+                        </button>
+
+                        <div className="hidden md:flex items-center gap-6">
+                            {['student', 'dashboard', 'admin'].map(p => (
+                                <button key={p} onClick={() => navigate(p)} className={`text-xs font-black uppercase tracking-widest transition-colors ${page === p ? 'text-primary bg-primary/5 px-3 py-1.5 rounded-lg border border-primary/10' : 'text-slate-400 hover:text-primary'}`}>
+                                    {p === 'student' ? '학생용' : p === 'dashboard' ? '대시보드' : '관리자'}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Mobile Dropdown */}
+                        {isMenuOpen && (
+                            <div className="absolute top-16 left-0 right-0 bg-white border-b border-slate-200 p-4 flex flex-col gap-2 md:hidden shadow-2xl">
+                                {['student', 'dashboard', 'admin'].map(p => (
+                                    <button key={p} onClick={() => navigate(p)} className={`px-4 py-3 rounded-xl font-bold text-left ${page === p ? 'bg-primary/5 text-primary' : 'text-slate-600'}`}>
+                                        {p === 'student' ? '학생용 (Call)' : p === 'dashboard' ? '대시보드 (Live)' : '관리자 (Settings)'}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </nav>
+
+                    <main className="p-4 md:p-10">
+                        {page === 'student' && <StudentPage />}
+                        {page === 'dashboard' && <DashboardPage />}
+                        {page === 'admin' && <AdminPage setIsAuthorized={setIsAuthorized} />}
+                    </main>
+
+                    <footer className="fixed bottom-0 left-0 right-0 h-12 bg-white border-t border-slate-100 flex items-center justify-center text-[9px] md:text-[11px] font-black text-slate-300 uppercase tracking-[0.2em] text-center px-2">
+                        © 2024 School Paging System Standalone Build
+                    </footer>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

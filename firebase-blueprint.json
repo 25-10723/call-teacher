@@ -1,0 +1,39 @@
+{
+  "entities": {
+    "Teacher": {
+      "title": "Teacher",
+      "description": "A teacher who can be called by students.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "department": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name"]
+    },
+    "Call": {
+      "title": "Call",
+      "description": "A paging request from a student to a teacher.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "teacherId": { "type": "string" },
+        "teacherName": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "completed"] },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["teacherId", "teacherName", "status", "timestamp"]
+    }
+  },
+  "firestore": {
+    "teachers": {
+      "schema": "Teacher",
+      "description": "List of available teachers."
+    },
+    "calls": {
+      "schema": "Call",
+      "description": "Real-time stream of student paging requests."
+    }
+  }
+}

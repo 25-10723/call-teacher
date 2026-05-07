@@ -1,0 +1,60 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Teacher Validation
+    function isValidTeacher(data) {
+      return data.keys().hasAll(['name', 'department', 'createdAt']) && 
+             data.keys().size() == 3 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 50 &&
+             data.department is string && data.department.size() <= 50;
+    }
+
+    // Call Validation
+    function isValidCall(data) {
+      return data.keys().hasAll(['teacherId', 'teacherName', 'status', 'timestamp']) &&
+             data.keys().size() == 4 &&
+             isValidId(data.teacherId) &&
+             data.teacherName is string && data.teacherName.size() > 0 && data.teacherName.size() <= 50 &&
+             data.status in ['pending', 'completed'];
+    }
+
+    // Teachers Collection
+    match /teachers/{teacherId} {
+      allow read: if true;
+      allow write: if true; // Simple app: controlled by Client-side password gate
+    }
+
+    // Calls Collection
+    match /calls/{callId} {
+      allow create: if isValidCall(incoming()) && incoming().timestamp == request.time;
+      allow read: if true;
+      allow update: if isValidCall(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['status']) &&
+        incoming().status == 'completed'
+      );
+      allow delete: if true;
+    }
+  }
+}
